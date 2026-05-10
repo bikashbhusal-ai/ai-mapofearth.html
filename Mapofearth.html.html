@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="ne">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Map of Earth: 3D</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Noto+Sans+Devanagari:wght@300;400;600;700&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300&display=swap" rel="stylesheet"/>
+
+  <style>
+    :root {
+      --gold: #c9922b;
+      --gold-light: #f0c060;
+      --gold-dim: rgba(201,146,43,0.25);
+      --deep: #020d1a;
+      --panel-bg: rgba(4, 16, 32, 0.88);
+      --text-light: #edeae0;
+      --text-muted: #8ca0b8;
+      --border: rgba(201,146,43,0.28);
+      --radius: 14px;
+      --shadow: 0 12px 48px rgba(0,0,0,0.7);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: var(--deep);
+      font-family: 'Crimson Pro', serif;
+      color: var(--text-light);
+    }
+
+    /* ── STARFIELD BACKGROUND ── */
+    #bg-canvas {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    /* ── GLOBE CONTAINER ── */
+    #chartdiv {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+    }
+
+    /* ── TOP-RIGHT STACK: Designer Credit + Map Title ── */
+    #top-right-stack {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 8px;
+      animation: fadeDown 0.7s ease both;
+    }
+
+    /* ── TOP-RIGHT: DESIGNER CREDIT ── */
+    #designer-credit {
+      background: var(--panel-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      backdrop-filter: blur(14px);
+      box-shadow: var(--shadow);
+    }
+    #designer-credit .pulse-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--gold);
+      box-shadow: 0 0 7px var(--gold);
+      animation: pulse 2.2s infinite;
+      flex-shrink: 0;
+    }
+    #designer-credit span {
+      font-family: 'Cinzel', serif;
+      font-size: 11.5px;
+      color: var(--text-muted);
+      letter-spacing: 0.06em;
+      white-space: nowrap;
+    }
+    #designer-credit strong {
+      color: var(--gold-light);
+      font-weight: 600;
+    }
+
+    /* ── MAP TITLE (below designer credit) ── */
+    .map-title {
+      background: yellow;
+      color: red;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 18px;
+      font-weight: bold;
+      font-family: Arial, sans-serif;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    }
+
+    /* ── BOTTOM-LEFT: INFO PANEL ── */
+    #bottom-left {
+      position: fixed;
+      bottom: 20px;
+      left: 16px;
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: flex-start;
+      animation: fadeUp 0.7s 0.15s ease both;
+    }
+
+    /* Show/Hide controls */
+    #panel-controls {
+      display: flex;
+      gap: 8px;
+    }
+    .ctrl-btn {
+      padding: 8px 20px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      font-family: 'Noto Sans Devanagari', sans-serif;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      backdrop-filter: blur(12px);
+      letter-spacing: 0.03em;
+    }
+    #btn-show {
+      background: linear-gradient(135deg, #1a7a42, #0e5229);
+      color: #b8ffd4;
+      border-color: #1a7a42;
+      box-shadow: 0 4px 16px rgba(26,122,66,0.35);
+    }
+    #btn-show:hover { transform: translateY(-2px); box-shadow: 0 6px 22px rgba(26,122,66,0.55); }
+    #btn-hide {
+      background: #E84545;
+      color: #FFD700;
+      border-color: #E84545;
+      box-shadow: 0 4px 16px rgba(232,69,69,0.35);
+    }
+    #btn-hide:hover { background: #c73030; border-color: #c73030; transform: translateY(-2px); }
+
+    /* Info panel card */
+    #info-panel {
+      background: var(--panel-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      backdrop-filter: blur(18px);
+      box-shadow: var(--shadow);
+      width: 340px;
+      overflow: hidden;
+      transition: max-height 0.45s cubic-bezier(0.4,0,0.2,1), opacity 0.35s ease;
+      max-height: 600px;
+      opacity: 1;
+    }
+    #info-panel.hidden {
+      max-height: 0;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .panel-header {
+      background: linear-gradient(135deg, rgba(201,146,43,0.15), rgba(201,146,43,0.04));
+      border-bottom: 1px solid var(--border);
+      padding: 14px 18px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .panel-header-icon {
+      font-size: 18px;
+      line-height: 1;
+    }
+    .panel-title {
+      font-family: 'Noto Sans Devanagari', sans-serif;
+      font-size: 13.5px;
+      font-weight: 700;
+      color: var(--gold-light);
+      line-height: 1.45;
+      letter-spacing: 0.01em;
+    }
+
+    .panel-body { padding: 14px 16px 16px; }
+
+    /* Section headers */
+    .section-label {
+      font-family: 'Cinzel', serif;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      color: var(--gold);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid var(--gold-dim);
+    }
+
+    /* Country rows */
+    .country-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      transition: background 0.2s;
+    }
+    .country-row:last-child { border-bottom: none; }
+
+    .rank-badge {
+      min-width: 26px; height: 26px;
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700;
+      font-family: 'Cinzel', serif;
+    }
+    .rank-badge.large { background: linear-gradient(135deg, #c9922b, #8a5e10); color: #fff8e8; }
+    .rank-badge.small { background: linear-gradient(135deg, #2b6cb0, #1a3f6b); color: #c8dfff; }
+
+    .country-info { flex: 1; }
+    .country-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-light);
+      font-family: 'Crimson Pro', serif;
+      letter-spacing: 0.02em;
+    }
+    .country-area {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 1px;
+      font-family: 'Crimson Pro', serif;
+    }
+
+    .section-gap { margin-top: 14px; }
+
+    /* ── ANIMATIONS ── */
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; box-shadow: 0 0 7px var(--gold); }
+      50%      { opacity: 0.3; box-shadow: 0 0 2px var(--gold); }
+    }
+
+    /* scrollbar */
+    .panel-body::-webkit-scrollbar { width: 4px; }
+    .panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+  <!-- Starfield canvas -->
+  <canvas id="bg-canvas"></canvas>
+
+  <!-- Globe -->
+  <div id="chartdiv"></div>
+
+  <!-- TOP-RIGHT: Designer Credit + Map Title below it -->
+  <div id="top-right-stack">
+    <div id="designer-credit">
+      <div class="pulse-dot"></div>
+      <span>Design by: <strong>Bikash Bhusal</strong></span>
+    </div>
+    <div class="map-title">Map of Earth: 3D</div>
+  </div>
+
+  <!-- BOTTOM-LEFT: Show/Hide + Info Panel -->
+  <div id="bottom-left">
+
+    <!-- Controls above panel -->
+    <div id="panel-controls">
+      <button class="ctrl-btn" id="btn-show" onclick="showPanel()">▶ देखाउनुस्</button>
+      <button class="ctrl-btn" id="btn-hide" onclick="hidePanel()">✕ लुकाउनुस्</button>
+    </div>
+
+    <!-- Info Panel -->
+    <div id="info-panel">
+      <div class="panel-header">
+        <span class="panel-header-icon">🌍</span>
+        <div class="panel-title">क्षेत्रफलका आधारमा विश्वका<br/>५ साना र ठुला देशहरु</div>
+      </div>
+      <div class="panel-body">
+
+        <!-- Largest -->
+        <div class="section-label">▲ सबैभन्दा ठुला ५ देशहरु (Largest)</div>
+        <div class="country-row">
+          <div class="rank-badge large">1</div>
+          <div class="country-info">
+            <div class="country-name">🇷🇺 रूस (Russia)</div>
+            <div class="country-area">१,७०,९८,२४२ km² — विश्वको सबैभन्दा ठूलो देश</div>
+          </div>
+        </div>
+        <div class="country-row">
+          <div class="rank-badge large">2</div>
+          <div class="country-info">
+            <div class="country-name">🇨🇦 क्यानडा (Canada)</div>
+            <div class="country-area">९९,८४,६७० km²</div>
+          </div>
+        </div>
+        <div class="country-row">
+          <div class="rank-badge large">3</div>
+          <div class="country-info">
+            <div class="country-name">🇺🇸 संयुक्त राज्य अमेरिका (USA)</div>
+            <div class="country-area">९८,३३,५१७ km²</div>
+          </div>
+        </div>
+        <div class="country-row">
+          <div class="rank-badge large">4</div>
+          <div class="country-info">
+            <div class="country-name">🇨🇳 चीन (China)</div>
+            <div class="country-area">९५,९६,९६० km²</div>
+          </div>
+        </div>
+        <div class="country-row">
+          <div class="rank-badge large">5</div>
+          <div class="country-info">
+            <div class="country-name">🇧🇷 ब्राजिल (Brazil)</div>
+            <div class="country-area">८५,१५,७६७ km²</div>
+          </div>
+        </div>
+
+        <!-- Smallest -->
+        <div class="section-label section-gap">▼ सबैभन्दा साना ५ देशहरु (Smallest)</div>
+        <div class="country-row">
+          <div class="rank-badge small">1</div>
+          <div class="country-info">
+            <div class="country-name">🇻🇦 भ्याटिकन सिटी (Vatican City)</div>
+            <div class="country-area">०.४४ km² — विश्वको सबैभन्दा सानो देश</div>
+          </div>
+        </div>
+        <div class="country-row">
+          <div class="rank-badge small">2</div>
+          <div class="country-info">
+            <div class="country-name">🇲🇨 मोनाको (Monaco)</div>
+            <div class="country-area">२.०२ km²</div>
+          </div>
+        </div>
+        <div class="country-row">
+          <div class="rank-badge small">3</div>
+          <div class="country-info">
+            <div class="country-name">🇸🇲 सान मारिनो (San Marino)</div>
+            <div class="country-area">६१ km²</div>
+          </div>
+        </div>
+        <div class="country-row">
+          <div class="rank-badge small">4</div>
+          <div class="country-info">
+            <div class="country-name">🇱🇮 लिख्टेनस्टाइन (Liechtenstein)</div>
+            <div class="country-area">१६० km²</div>
+          </div>
+        </div>
+        <div class="country-row">
+          <div class="rank-badge small">5</div>
+          <div class="country-info">
+            <div class="country-name">🇲🇻 मालदिभ्स (Maldives)</div>
+            <div class="country-area">२९८ km²</div>
+          </div>
+        </div>
+
+      </div><!-- /panel-body -->
+    </div><!-- /info-panel -->
+
+  </div><!-- /bottom-left -->
+
+  <script>
+    // ── STARFIELD ──
+    (function() {
+      const canvas = document.getElementById('bg-canvas');
+      const ctx = canvas.getContext('2d');
+      let stars = [];
+
+      function resize() {
+        canvas.width  = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+      function initStars() {
+        stars = [];
+        for (let i = 0; i < 280; i++) {
+          stars.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            r: Math.random() * 1.2 + 0.2,
+            o: Math.random() * 0.6 + 0.2,
+            speed: Math.random() * 0.18 + 0.04
+          });
+        }
+      }
+      function drawStars() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // deep space gradient
+        const grad = ctx.createRadialGradient(
+          canvas.width/2, canvas.height/2, canvas.height * 0.1,
+          canvas.width/2, canvas.height/2, canvas.height * 0.85
+        );
+        grad.addColorStop(0, '#020d1a');
+        grad.addColorStop(1, '#000508');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        stars.forEach(s => {
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(200,220,255,${s.o})`;
+          ctx.fill();
+          // twinkle
+          s.o += (Math.random() - 0.5) * 0.04;
+          s.o = Math.max(0.1, Math.min(0.9, s.o));
+        });
+        requestAnimationFrame(drawStars);
+      }
+      window.addEventListener('resize', () => { resize(); initStars(); });
+      resize(); initStars(); drawStars();
+    })();
+
+    // ── SHOW / HIDE ──
+    function showPanel() {
+      document.getElementById('info-panel').classList.remove('hidden');
+    }
+    function hidePanel() {
+      document.getElementById('info-panel').classList.add('hidden');
+    }
+
+    // ── AMCHARTS GLOBE (loaded after DOM + libs) ──
+    function initGlobe() {
+      var root = am5.Root.new("chartdiv");
+      root.setThemes([am5themes_Animated.new(root)]);
+
+      var chart = root.container.children.push(am5map.MapChart.new(root, {
+        panX: "rotateX",
+        panY: "rotateY",
+        wheelY: "none",
+        projection: am5map.geoOrthographic(),
+        homeZoomLevel: 0.90,
+        minZoomLevel: 0.4,
+        zoomLevel: 0.90,
+        paddingBottom: 80,
+        paddingTop: 80,
+        paddingLeft: 80,
+        paddingRight: 80
+      }));
+
+      var backgroundSeries = chart.series.push(am5map.MapPolygonSeries.new(root, {}));
+      backgroundSeries.mapPolygons.template.setAll({
+        fill: am5.color("#0B3D91"),
+        fillOpacity: 1,
+        strokeOpacity: 0,
+        tooltipText: "Ocean",
+        interactive: true
+      });
+      backgroundSeries.data.push({
+        geometry: am5map.getGeoRectangle(90, 180, -90, -180)
+      });
+
+      var graticuleSeries = chart.series.unshift(
+        am5map.GraticuleSeries.new(root, { step: 10 })
+      );
+      graticuleSeries.mapLines.template.set("strokeOpacity", 0.1);
+
+      var polygonSeries = chart.series.push(am5map.MapPolygonSeries.new(root, {
+        geoJSON: am5geodata_worldLow
+      }));
+
+      polygonSeries.mapPolygons.template.setAll({
+        tooltipText: "{name}",
+        toggleKey: "active",
+        interactive: true,
+        stroke: am5.color("#FFFFFF"),
+        strokeWidth: 0.5,
+        tooltip: am5.Tooltip.new(root, {
+          getFillFromSprite: false,
+          autoTextColor: true,
+          background: am5.RoundedRectangle.new(root, {
+            fillOpacity: 0,
+            strokeOpacity: 0
+          })
+        })
+      });
+
+      var labelSeries = chart.series.push(am5map.MapPointSeries.new(root, {}));
+      labelSeries.bullets.push(function() {
+        return am5.Bullet.new(root, {
+          sprite: am5.Label.new(root, {
+            text: "{id}",
+            centerX: am5.p50,
+            centerY: am5.p50,
+            fontSize: 10,
+            fontWeight: "bold",
+            fill: am5.color("#FFFFFF"),
+            populateText: true
+          })
+        });
+      });
+
+      polygonSeries.events.on("datavalidated", function() {
+        var top10 = ["RU","CA","CN","US","BR","AU","IN","AR","KZ","DZ"];
+        am5.array.each(top10, function(id) {
+          var dataItem = polygonSeries.getDataItemById(id);
+          if (dataItem) {
+            var centroid = dataItem.get("mapPolygon").geoCentroid();
+            if (centroid) {
+              labelSeries.pushDataItem({
+                id: id,
+                longitude: centroid.longitude,
+                latitude: centroid.latitude
+              });
+            }
+          }
+        });
+      });
+
+      polygonSeries.mapPolygons.template.states.create("hover",  { fill: am5.color("#FF0000") });
+      polygonSeries.mapPolygons.template.states.create("active", { fill: am5.color("#FF0000") });
+
+      var previousPolygon;
+      polygonSeries.mapPolygons.template.on("active", function (active, target) {
+        if (previousPolygon && previousPolygon != target) {
+          previousPolygon.set("active", false);
+        }
+        if (target.get("active")) {
+          chart.set("wheelY", "zoom");
+          selectCountry(target.dataItem.get("id"));
+        }
+        previousPolygon = target;
+      });
+
+      function selectCountry(id) {
+        var dataItem = polygonSeries.getDataItemById(id);
+        var target = dataItem.get("mapPolygon");
+        if (target) {
+          var centroid = target.geoCentroid();
+          if (centroid) {
+            chart.animate({ key: "rotationX", to: -centroid.longitude, duration: 1500, easing: am5.ease.inOut(am5.ease.cubic) });
+            chart.animate({ key: "rotationY", to: -centroid.latitude,  duration: 1500, easing: am5.ease.inOut(am5.ease.cubic) });
+          }
+        }
+      }
+
+      chart.appear(1000, 100);
+    }
+  </script>
+
+  <!-- amCharts loaded LAST so am5 is defined before use -->
+  <script src="https://cdn.amcharts.com/lib/5/index.js"></script>
+  <script src="https://cdn.amcharts.com/lib/5/map.js"></script>
+  <script src="https://cdn.amcharts.com/lib/5/geodata/worldLow.js"></script>
+  <script src="https://cdn.amcharts.com/lib/5/themes/Animated.js"></script>
+  <script>
+    am5.ready(function() { initGlobe(); });
+  </script>
+</body>
+</html>
